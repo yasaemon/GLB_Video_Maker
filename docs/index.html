@@ -18,12 +18,20 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; background-color: #0f172a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #0f172a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; }
         
+        /* Preview Area */
+        #preview-area {
+            flex-grow: 1;
+            position: relative;
+            height: 100vh;
+            background-color: #0f172a;
+        }
+
         /* 3D Canvas Layer */
         #canvas-container { 
-            width: 100vw; 
-            height: 100vh; 
+            width: 100%; 
+            height: 100%; 
             position: absolute; 
             top: 0; 
             left: 0; 
@@ -32,17 +40,14 @@
 
         /* UI Layer - Glassmorphism */
         #ui-layer { 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
             width: 400px; 
             height: 100vh; 
-            background: rgba(15, 23, 42, 0.9); 
-            backdrop-filter: blur(10px);
+            background: rgba(15, 23, 42, 0.95); 
             border-right: 1px solid #334155; 
             z-index: 10; 
             display: flex; 
             flex-direction: column;
+            flex-shrink: 0;
             transition: transform 0.3s ease;
         }
 
@@ -136,7 +141,7 @@
         /* Tabs */
         .tab-group { display: flex; background: #1e293b; border-radius: 0.5rem; padding: 0.25rem; margin-bottom: 1.5rem; }
         .tab-btn { flex: 1; padding: 0.5rem; border-radius: 0.375rem; font-size: 0.875rem; color: #94a3b8; cursor: pointer; text-align: center; transition: all 0.2s; }
-        .tab-btn.active { background: #3b82f6; color: white; font-weight: 600; shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .tab-btn.active { background: #3b82f6; color: white; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
 
         /* Chart Container */
         .chart-container {
@@ -176,9 +181,6 @@
 </head>
 <body>
 
-    <!-- 3D Canvas -->
-    <div id="canvas-container"></div>
-
     <!-- UI Sidebar -->
     <div id="ui-layer">
         <div class="p-6 border-b border-slate-700 bg-slate-900/50">
@@ -205,7 +207,6 @@
                 <div class="input-group">
                     <label class="input-label">2. Adjust Model</label>
                     <div class="space-y-4">
-                        <!-- 新機能: 配置基準の選択 -->
                         <div>
                             <div class="flex justify-between mb-1">
                                 <span class="text-xs text-slate-400">Alignment (Pivot)</span>
@@ -309,7 +310,19 @@
         </div>
 
         <div class="p-4 border-t border-slate-700 text-center">
-            <p class="text-[10px] text-slate-600">GLB Video Generator v2.3</p>
+            <p class="text-[10px] text-slate-600">GLB Video Generator v2.5 (Layout Update)</p>
+        </div>
+    </div>
+
+    <!-- Preview Area -->
+    <div id="preview-area">
+        <!-- 3D Canvas -->
+        <div id="canvas-container"></div>
+        
+        <!-- Resolution Indicator -->
+        <div class="absolute top-4 right-4 bg-slate-900/80 text-slate-300 text-xs px-3 py-1.5 rounded-full backdrop-blur-sm border border-slate-700 z-10 pointer-events-none shadow-lg flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+            Output Size: <span id="resolution-text" class="font-mono text-white tracking-wider"></span>
         </div>
     </div>
 
@@ -408,22 +421,32 @@
             userScale: 1.0,
             userHeight: 0.0,
             userAlign: 'center',
-            singleFilename: 'video' // デフォルトのファイル名
+            singleFilename: 'video'
         };
+
+        const previewArea = document.getElementById('preview-area');
+        const resText = document.getElementById('resolution-text');
 
         // --- Three.js Setup ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(state.sceneBg);
 
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        const camera = new THREE.PerspectiveCamera(45, previewArea.clientWidth / previewArea.clientHeight, 0.1, 100);
         camera.position.set(CONFIG.cameraPos.x, CONFIG.cameraPos.y, CONFIG.cameraPos.z);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(previewArea.clientWidth, previewArea.clientHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        function updateResolution() {
+            if (resText) {
+                resText.textContent = `${previewArea.clientWidth} x ${previewArea.clientHeight}`;
+            }
+        }
+        updateResolution();
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
@@ -628,10 +651,10 @@
                         renderer.render(scene, camera);
                         requestAnimationFrame(recordLoop);
                     } else {
-                        modelGroup.rotation.y = Math.PI * 2;
-                        renderer.render(scene, camera);
+                        // ループ再生時のカクつき防止：最後のフレームを描画せずに終了
                         recorder.stop();
                         state.isRecording = false;
+                        modelGroup.rotation.y = 0;
                     }
                 }
                 
@@ -689,7 +712,6 @@
                 const file = e.target.files[0];
                 const url = URL.createObjectURL(file);
                 
-                // ファイル名を保存 (拡張子を除く)
                 state.singleFilename = file.name.replace(/\.(glb|gltf)$/i, "");
 
                 // Reset controls defaults
@@ -707,7 +729,6 @@
         document.getElementById('scale-input').addEventListener('input', (e) => {
             state.userScale = parseFloat(e.target.value);
             document.getElementById('scale-val').textContent = state.userScale.toFixed(1) + 'x';
-            // Simple scale update doesn't require reload
             if (state.currentObject) {
                 const finalScale = state.baseScale * state.userScale;
                 state.currentObject.scale.setScalar(finalScale);
@@ -717,13 +738,7 @@
         document.getElementById('height-input').addEventListener('input', (e) => {
             state.userHeight = parseFloat(e.target.value);
             document.getElementById('height-val').textContent = state.userHeight.toFixed(1);
-            // Simple height update
             if (state.currentObject) {
-                 // Note: This adds height to current Y. Since Y might depend on alignment, 
-                 // and we don't track base Y cleanly in update loop, best to reload or standardize.
-                 // Ideally, just reload for consistency, but for performance, we try:
-                 // But wait, object.position.y is already modified.
-                 // Let's just reload. It's safer for alignment consistency.
                  reloadSingleModel();
             }
         });
@@ -761,7 +776,6 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                // 修正: 保存時のファイル名をGLB名に変更
                 a.download = `${state.singleFilename}${ext}`;
                 a.click();
             } catch (err) {
@@ -924,23 +938,39 @@
             requestAnimationFrame(animate);
         });
 
-        function animate() {
+        // --- 修正: プレビューの回転速度を録画時(5秒で1周)と同じにする ---
+        let lastAnimateTime = 0;
+        
+        function animate(time) {
             if (!state.isRecording) {
                 requestAnimationFrame(animate);
                 controls.update();
-                if (modelGroup) modelGroup.rotation.y += 0.005;
+                
+                if (modelGroup) {
+                    if (lastAnimateTime !== 0) {
+                        const delta = time - lastAnimateTime;
+                        // 録画設定(5000ms)と同じ時間で1周(Math.PI * 2)するように回転
+                        modelGroup.rotation.y += ((Math.PI * 2) / CONFIG.duration) * delta;
+                    }
+                }
+                lastAnimateTime = time;
+                
                 renderer.render(scene, camera);
+            } else {
+                // 録画中は時間をリセットしてプレビュー再開時のカクつきを防ぐ
+                lastAnimateTime = 0;
             }
         }
         
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.aspect = previewArea.clientWidth / previewArea.clientHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setSize(previewArea.clientWidth, previewArea.clientHeight);
+            updateResolution();
         });
 
         updateSingleUI(); 
-        animate();
+        requestAnimationFrame(animate); // 初回起動もrequestAnimationFrame経由に変更
 
     </script>
 </body>
